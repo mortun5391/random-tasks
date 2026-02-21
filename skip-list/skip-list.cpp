@@ -3,28 +3,30 @@
 #include <iostream>
 #include <iomanip>
 #include <sstream>
+#include <algorithm>
+
 
 using namespace std;
 
 template <typename T>
-struct Node {
-    Node* next;
-    Node* low;
+struct SkipListNode {
+    SkipListNode* next;
+    SkipListNode* low;
     T value;
 
-    Node(T value_) : value(value_), next(nullptr), low(nullptr) {}
-    Node(Node* node) : value(node->value), next(node->next), low(node->low) {}
+    SkipListNode(T value_) : value(value_), next(nullptr), low(nullptr) {}
+    SkipListNode(SkipListNode* node) : value(node->value), next(node->next), low(node->low) {}
 };
 
 template <typename T>
 class SkipList {
 private:
-    Node<T>* head_;
+    SkipListNode<T>* head_;
     mt19937 rng_;
     uniform_int_distribution<int> dist_;
 
-    Node<T>* lower_bound_(T value) {
-        Node<T>* cur = head_;
+    SkipListNode<T>* lower_bound_(T value) {
+        SkipListNode<T>* cur = head_;
 
         while (cur != nullptr) {
             while (cur->next != nullptr && cur->next->value <= value) {
@@ -38,25 +40,25 @@ private:
         return nullptr;
     }
 
-    Node<T>* insert_(Node<T>* cur, T value) {
+    SkipListNode<T>* insert_(SkipListNode<T>* cur, T value) {
         while (cur->next != nullptr && cur->next->value < value) {
             cur = cur->next;
         }
         if (cur->low == nullptr) {
-            Node<T>* next = cur->next;
-            cur->next = new Node(value);
+            SkipListNode<T>* next = cur->next;
+            cur->next = new SkipListNode(value);
             cur->next->next = next;
             return cur->next;
 
         }
-        Node<T>* node = insert_(cur->low, value);
+        SkipListNode<T>* node = insert_(cur->low, value);
         if (node == nullptr) {
             return nullptr;
         }
 
         if (dist_(rng_)) {
-            Node<T>* next = cur->next;
-            cur->next = new Node(value);
+            SkipListNode<T>* next = cur->next;
+            cur->next = new SkipListNode(value);
             cur->next->next = next;
             cur->next->low = node;
             return cur->next;
@@ -65,31 +67,59 @@ private:
         return nullptr;
     }
 
+    void erase_(T value) {
+        SkipListNode<T>* cur = head_;
+        bool flag = true;
+        while (cur != nullptr) {
+            while (cur->next != nullptr && cur->next->value < value) {
+                cur = cur->next;
+                flag = false;
+            }
+            if (cur->next != nullptr && cur->next->value == value) {
+                SkipListNode<T>* next = cur->next->next;
+                delete cur->next;
+                cur->next = next;
+            }
+
+            if (cur->low == nullptr) {
+                return;
+            }
+            if (cur->next == nullptr && flag) {
+                head_ = cur->low;
+                
+                delete cur;
+                cur = head_;
+                continue;
+            }
+            cur = cur->low;
+        }
+    }
+
 
 public:
 
     SkipList() {
-        head_ = new Node(T());
+        head_ = new SkipListNode(T());
         dist_ = uniform_int_distribution<int>(0, 1);
         std::random_device rd;
         rng_ = std::mt19937(rd());
     }
 
     void insert(T value) {
-        Node<T>* node = insert_(head_, value);
+        SkipListNode<T>* node = insert_(head_, value);
         if (node != nullptr) {
             if (dist_(rng_)) {
-                Node<T>* new_head = new Node(T());
+                SkipListNode<T>* new_head = new SkipListNode(T());
                 new_head->low = head_;
                 head_ = new_head;
-                head_->next = new Node(value);
+                head_->next = new SkipListNode(value);
                 head_->next->low = node;
             }
         }
     }
 
     void erase(T value) {
-
+        erase_(value);
     }
 
     T lower_bound(T value) {
@@ -102,25 +132,21 @@ public:
             return;
         }
 
-        // Сначала найдем максимальную высоту
         int height = 0;
-        Node<T>* top = head_;
+        SkipListNode<T>* top = head_;
         while (top != nullptr) {
             height++;
             top = top->low;
         }
 
-        // Создадим вектор для хранения всех уровней
         std::vector<std::vector<std::string>> levels(height);
 
-        // Соберем все значения по уровням
-        Node<T>* level = head_;
+        SkipListNode<T>* level = head_;
         int levelIdx = height - 1;
 
         while (level != nullptr) {
-            Node<T>* curr = level->next;
+            SkipListNode<T>* curr = level->next;
             while (curr != nullptr) {
-                // Преобразуем значение в строку (для универсальности)
                 std::stringstream ss;
                 ss << curr->value;
                 levels[levelIdx].push_back(ss.str());
@@ -130,24 +156,20 @@ public:
             levelIdx--;
         }
 
-        // Вывод в красивом формате
         std::cout << "Skip List Structure:" << std::endl;
         std::cout << "====================" << std::endl;
 
         for (int i = height - 1; i >= 0; i--) {
             std::cout << "Level " << i << ": ";
 
-            // Для выравнивания, будем отслеживать позицию
             int pos = 0;
             auto& currentLevel = levels[i];
             auto& lowerLevel = (i > 0) ? levels[i-1] : levels[i];
 
             for (const auto& val : currentLevel) {
-                // Найдем позицию этого значения на нижнем уровне
                 auto it = std::find(lowerLevel.begin(), lowerLevel.end(), val);
                 if (it != lowerLevel.end()) {
                     int lowerPos = std::distance(lowerLevel.begin(), it);
-                    // Добавим отступы
                     while (pos < lowerPos) {
                         std::cout << "    ";
                         pos++;
@@ -167,12 +189,17 @@ public:
 
 int main() {
     SkipList<int> sl;
-    sl.insert(1);
-    sl.insert(2);
-    sl.insert(5);
-    sl.insert(4);
+    for (int i = 1; i <= 10; ++i) {
+        sl.insert(i);
+    }
+
+    sl.print();
 
     cout << sl.lower_bound(4) << endl;
+    sl.erase(5);
+    sl.erase(10);
+    sl.erase(24);
+    sl.erase(28);
 
     sl.print();
 }
